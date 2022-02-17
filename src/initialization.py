@@ -12,6 +12,7 @@ def initialization(t,src,n):
 	argv['pacData'] = src
 	argv['pacType'] = 'data'
 	argv['pacAckReq'] = True
+	argv['channel'] = []
 	e = event(argv)
 	return e
 

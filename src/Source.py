@@ -1,7 +1,6 @@
 import sys
 import random
 
-
 class Source(object):
 
 	def __init__(self, argv):
@@ -14,7 +13,7 @@ class Source(object):
 		self.RTCount = 0
 		self.BOExponent = 0
 		self.CW = 2   # contention window
-		self.CCA = 0
+		self.CCA = []
 		self.CCAResult = {}
 		self.ID = argv['ID']
 #<<<<<<< HEAD
@@ -28,7 +27,8 @@ class Source(object):
 #>>>>>>> 8c1bc2b3aca1bda3f00ab1f1346aa632dfe8f351
 # the following set of para are power para
 		self.powLevel = 0  # current power setting
-		self.powTX = 0     # the TX power, RF power.
+		# self.powTX = 0     # the TX power, RF power.
+		self.powTX = [0, 0]  # the TX power array, RF power.
 		self.lastPowChange = 0  # time information. record the last time that power level has been changed.
 #<<<<<<< HEAD
 		self.energy = 0 # J
@@ -42,7 +42,8 @@ class Source(object):
 # the following are for packet size and data
 		self.pacSize = 3    # in terms of slots
 
-		self.TxTime = 80
+		# self.TxTime = 80
+		self.TxTime = [80, 80]
 
 		self.pacData = argv['src']    # use node ID as the data
 # the following are the node ID, destination
@@ -85,6 +86,11 @@ class Source(object):
 
 # the following are for optimization purpose.
 		self.allInterval = []  # the record of data each arrival rate
+  
+		# add more channel
+		self.numOfChannel = 2
+		self.channel = -1
+		# channel = [0, 0]  # 1 is used by this node, 0 is none used by this node
 
 	def getBOCount(self):
 		return self.BOCount
@@ -140,11 +146,13 @@ class Source(object):
 			print 'No such power mode exists...'
 			sys.exit(0)
 
-	def getTXPower(self):
-		return self.powTX
+	# add index to choose channel
+	def getTXPower(self, i=0):
+		return self.powTX[i]
 
-	def setTXPower(self,value):
-		self.powTX = value
+	# add index to choose channel
+	def setTXPower(self,value,i=0):
+		self.powTX[i] = value
 
 	def getPacket(self):
 		return self.pacSize,self.pacData
@@ -184,17 +192,24 @@ class Source(object):
 	def getBE(self):
 		return self.minBE, self.maxBE
 
-	def getCCA(self):
-		return self.CCA
+	def getCCA(self,channel):
+		return self.CCA[channel]
 
-	def setCCA(self,value):
-		self.CCA = value
+	def setCCA(self,value,channel):
+		self.CCA[channel] = value
 
 	def getID(self):
 		return self.ID
 
-	def setCCAResult(self,other,value):
-		self.CCAResult[other] = value
+	def initCCAResult(self, numOfNodes, numOfChannel):
+		for node in range(numOfNodes):
+			self.CCAResult[node] = []
+			for channel in range(numOfChannel):
+				self.CCAResult[node].append(0) 
+				self.CCA.append(0)
+
+	def setCCAResult(self,other,value,channel):
+		self.CCAResult[other][channel] = value
 
 	def getCCAResult(self):
 		return self.CCAResult
@@ -248,7 +263,7 @@ class Source(object):
 			self.TRYAttemptCount[self.TRYAllCount] = 0
 		elif result == 'fail':
 			self.TRYAttemptCount[self.TRYAllCount] = 1
-
+ 
 		self.TRYAllCount += 1
 		self.failAckProb = sum(self.TRYAttemptCount.values())/float(len(self.TRYAttemptCount))
 	# there are 2 cases: 1 means get all data; n means get the recent n data
@@ -258,6 +273,7 @@ class Source(object):
 		else:
 			return sum(self.BOAttemptCount.values()[-arg1:])/min(float(arg1),float(len(self.BOAttemptCount.values()))),sum(self.TRYAttemptCount.values()[-arg2:])/min(float(arg2), float(len(self.TRYAttemptCount.values())))
 
+ 	# package interval 
 	def getPacInterval(self):
 		return self.pacInterval
 
@@ -277,6 +293,6 @@ class Source(object):
 	def getAverageInterval(self):
 		return sum(self.allInterval[-30:])/30
 
-	def getTxTime(self):
-		return self.TxTime
-
+	# add index to choose channel
+	def getTxTime(self, i=0):
+		return self.TxTime[i]

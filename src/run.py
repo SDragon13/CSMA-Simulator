@@ -10,8 +10,7 @@ from EKF import kalman_update
 import numpy as np
 import os
 
-
-def runSimulation(number):
+def runSimulation(number, numOfChannel):
 	numOfNodes = number+1
 
 	nodes = []
@@ -22,6 +21,7 @@ def runSimulation(number):
 		argv['src'] = i
 		argv['des'] = numOfNodes - 1
 		n = Source(argv)
+		n.initCCAResult(numOfNodes, numOfChannel)
 		nodes.append(n)
 
 	eventList = []
@@ -44,9 +44,9 @@ def runSimulation(number):
 		elif min_t > fromSecondToSlot(5):  # 6250000  # *4/250000
 			break
 		else:
-			min_index, min_t = min(enumerate(e.time for e in eventList),key=operator.itemgetter(1))
+			min_index, min_t = min(enumerate(e.time for e in eventList),key=operator.itemgetter(1))	# find next event
 			newList = action(eventList[min_index], nodes, 'normal')
-			eventList.pop(min_index)
+			eventList.pop(min_index)   # delete which is handled
 			for n in newList:
 				eventList.append(n)
 
@@ -102,7 +102,6 @@ def runARMAFiltering():
 
 	writer = csv.writer(open('data/estimation-0.csv', 'w'))
 
-
 	with open('src/data2.csv', 'rb') as file:
 		data = csv.reader(file, delimiter=',')
 		for d in data:
@@ -129,9 +128,7 @@ def runKalmanFiltering():
 			writer.writerow([transProb, usage])
 			print transProb, usage
 
-
-
-runSimulation(22)
+runSimulation(20, 2)
 #runParticeFiltering()
 # runKalmanFiltering()
 # runARMAFiltering()

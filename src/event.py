@@ -10,5 +10,5 @@ class event(object):
 		self.pacData = argv['pacData']
 		self.pacType = argv['pacType']
 		self.pacAckReq = argv['pacAckReq']
-
+		self.channel = argv['channel']
 

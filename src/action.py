@@ -27,10 +27,11 @@ def action(curEvent,nodes,mode):
 	i = curEvent.src
 	t = curEvent.time
 	des = curEvent.des
+	channels = curEvent.channel
 
 	newList = []
 	nodes[i].updateEnergy(t)
-
+    
 	if arg == 'sendMac':
 
 		#nodes[i].updateEnergy(t)
@@ -44,7 +45,7 @@ def action(curEvent,nodes,mode):
 		nodes[i].timeStamping(t,'start')  # record the start of a packet
 
 		if not DEBUG:
-			print 'node:', nodes[i].ID, nodes[i].getChannelIndicators();
+			print 'node:', nodes[i].ID, nodes[i].getChannelIndicators()
 
 		if DEBUG:
 			print 'node:', t, nodes[i].ID, 'send mac'
@@ -52,9 +53,9 @@ def action(curEvent,nodes,mode):
 	elif arg == 'backoffStart':
 		# the start of the WHOLE backoff process, boCount = 0
 
-		nodes[i].setPower('sleep')
-		nodes[i].setCW(1)
-		nodes[i].setBOCount(0)
+		nodes[i].setPower('sleep') # power lever = 1
+		nodes[i].setCW(1)  # -1 or value
+		nodes[i].setBOCount(0) # 0 or 1
 
 		# 802.15.4 backoff
 		if METHOD == '802.15.4':
@@ -85,17 +86,22 @@ def action(curEvent,nodes,mode):
 
 	elif arg == 'ccaStart':
 
-		nodes[i].setPower('sense')
-		if carrierSensing(i, 'start', nodes):
+		nodes[i].setPower('sense') # power lever = 20
+		channel = carrierSensing(i, 'start', nodes) # [channel1, channel2...]
+
+		if len(channel) != 0:
 		#	print 'channel start is idle'
 			new = copy.copy(curEvent)
-			new.time = t + CCA_TIME
+			new.time = t + CCA_TIME # CCA_TIME = 8
 			new.actType = 'ccaEnd'
-			nodes[i].setCCA(0)
+			new.channel = channel
+			# TODO(use range to each channel)
+			nodes[i].setCCA(0, channel[0])
+			nodes[i].setTXPower(5, channel[0])
 			newList.append(new)
-
+   
 			if DEBUG:
-				print 'node:', t, nodes[i].ID, 'CCA starts.'
+				print 'node:', t, nodes[i].ID, 'CCA starts. channel:', channel 
 
 		else:
 			# channel is busy
@@ -103,16 +109,16 @@ def action(curEvent,nodes,mode):
 			new = copy.copy(curEvent)
 			new.time = t + CCA_TIME
 			new.actType = 'ccaEnd'
-			nodes[i].setCCA(1)
+			nodes[i].setCCA(1, channel[0])
 			newList.append(new)
 
 			if DEBUG:
 				print 'node:', t, nodes[i].ID, 'channel busy.'
 
 	elif arg == 'ccaEnd':
-
 		nodes[i].setPower('idle')
-		if carrierSensing(i, 'end', nodes) and nodes[i].getCCA() == 0:
+		channel = channels
+		if len(channel) != 0 and nodes[i].getCCA(channel[0]) == 0:
 			#print 'channel end is idle'
 			nodes[i].setCW(-1)
 			if nodes[i].getCW() == 0:
@@ -123,9 +129,8 @@ def action(curEvent,nodes,mode):
 				new.actType = 'sendPhy'
 				newList.append(new)
 				nodes[i].setCW(2)
-
 				if DEBUG:
-					print 'node:', t, nodes[i].ID, 'channel is confirmed idle.'
+					print 'node:', t, nodes[i].ID, 'channel is confirmed idle. channel:', channel  
 
 			else:
 				new = copy.copy(curEvent)
@@ -179,42 +184,45 @@ def action(curEvent,nodes,mode):
 				new.time = t + TX_TURNAROUND
 				new.actType = 'backoff'
 				newList.append(new)
-				nodes[i].setCCA(0)
+				nodes[i].setCCA(0, channel[0])
 
 				if DEBUG:
 					print 'node:', t, nodes[i].ID, 'channel busy, performs backoff.'
 
 	elif arg == 'sendPhy':
-
+		channel = channels
 		nodes[i].setPower('tx')
 		if curEvent.pacType == 'data':
-			# tx_time = TX_TIME_DATA
+      		#update the power, add channel param
+			nodes[i].setTXPower(5, channel[0])
+			print 'after setTXPower'
+			print nodes[i].getTXPower(channel[0])
+   			# tx_time = TX_TIME_DATA
 			if t < fromSecondToSlot(100):
-				tx_time = nodes[i].getTxTime()
+				tx_time = nodes[i].getTxTime(channel[0])
 			elif t< fromSecondToSlot(300):
-				tx_time = nodes[i].getTxTime() + 20
+				tx_time = nodes[i].getTxTime(channel[0]) + 20
 			elif t< fromSecondToSlot(400):
-				tx_time = nodes[i].getTxTime() + 40
+				tx_time = nodes[i].getTxTime(channel[0]) + 40
 			else:
-				tx_time = nodes[i].getTxTime()
+				tx_time = nodes[i].getTxTime(channel[0])
 
 		elif curEvent.pacType == 'ack':
+			print 'in ack, none setTXPower'
+			print 'TXPower:', nodes[i].getTXPower(channel[0])
 			tx_time = TX_TIME_ACK
 		else:
 			print 'no such tx time....'
 			sys.exit(0)
 
-		#update the power
-		nodes[i].setTXPower(5)
 		nodes[i].setPower('tx')
 
 		# implement the CCA information
-		for n in nodes:
-			if i == n.getID():
-				continue
-			else:
-				n.setCCAResult(i, nodes[i].getTXPower())
-
+		# for n in nodes:
+		# 	if i == n.getID():
+		# 		continue
+		# 	else:
+		# 		n.setCCAResult(i, nodes[i].getTXPower(channel), channel)
 		new1 = copy.copy(curEvent)
 		new1.src = des
 		new1.des = i
@@ -232,16 +240,11 @@ def action(curEvent,nodes,mode):
 
 	elif arg == 'sendPhyFinish':
 	# set up the transmitter.
+		channel = channels
 		nodes[i].setPower('sleep')
-		nodes[i].setTXPower(0)
+		nodes[i].setTXPower(0, channel[0])
 		nodes[i].setPower('rx')
-
-		for n in nodes:
-			if i == n.getID():
-				continue
-			else:
-				n.setCCAResult(i, nodes[i].getTXPower())
-
+  
 		if DEBUG:
 			print 'node:', t, nodes[i].ID, 'send phy finished.'
 
@@ -295,9 +298,11 @@ def action(curEvent,nodes,mode):
 
 
 	elif arg == 'recvPhy':
+		# channel = nodes[des].channel
+		channel = channels
 		nodes[i].setPower('rx')
 		model = 'ch_model'
-		probRecv = recvPhy(i, nodes, model)
+		probRecv = recvPhy(i, nodes, model, channel[0])
 		#print probRecv, curEvent.pacType,nodes[i].BOCount,i
 		if probRecv:
 			if curEvent.pacType == 'ack':
@@ -310,6 +315,7 @@ def action(curEvent,nodes,mode):
 					print 'node:',t, nodes[i].ID, 'received ACK at PHY.'
 
 			else:
+				nodes[i].setTXPower(5, channel[0]) # the same channel as sender
 				new = copy.copy(curEvent)
 				new.time = t
 				new.actType = 'recvMac'
@@ -351,7 +357,7 @@ def action(curEvent,nodes,mode):
 				# need check the following
 				new.des = curEvent.des
 				new.src = curEvent.src
-
+				print 'recvMax: src: %s, des: %s' % (new.src, new.des)
 				# here can mark the receiving of the data
 				newList.append(new)
 
@@ -401,5 +407,3 @@ def nextPacket(mode, nodes, newList, i, t, temp):
 
 def fromSecondToSlot(second):
 	return second*250000/4
-
-
