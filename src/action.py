@@ -8,13 +8,14 @@ from recvPhy import recvPhy
 from initialization import initialization
 import math
 
-from aoi import AOI, T, Freshness
+from aoi import AOI, T, Freshness, allEventMap,collision,channel_count
 
 METHOD = '802.15.4'
 TRAFFIC_SATURATED = False
 
+phy_time = 1000
 
-def action(curEvent,nodes,mode,numOfChannel):
+def action(curEvent,nodes,mode,numOfChannel,dcb):
 
 	DEBUG = True
 
@@ -35,7 +36,15 @@ def action(curEvent,nodes,mode,numOfChannel):
 	nodes[i].updateEnergy(t)
 
 	if arg == 'sendMac':
-
+		# add cca to check if channel is idle?
+		channel = carrierSensing(i, 'start', nodes, numOfChannel, dcb) # [channel1, channel2...]
+		if channel[0] == -1:
+			new = copy.copy(curEvent)
+			new.time = t + CCA_TIME 
+			new.actType = 'sendMac'
+			newList.append(new)
+			collision[i] = collision[i] + 1
+			return newList
 		#nodes[i].updateEnergy(t)
 		nodes[i].setPower('idle')
 
@@ -89,10 +98,11 @@ def action(curEvent,nodes,mode,numOfChannel):
 	elif arg == 'ccaStart':
 
 		nodes[i].setPower('sense') # power lever = 20
-		channel = carrierSensing(i, 'start', nodes, numOfChannel, 'AM') # [channel1, channel2...]
+		channel = carrierSensing(i, 'start', nodes, numOfChannel, dcb) # [channel1, channel2...]
 
 		if channel[0] != -1:
 		#	print 'channel start is idle'
+			channel_count[i] = channel_count[i] + len(channel)
 			new = copy.copy(curEvent)
 			new.time = t + CCA_TIME # CCA_TIME = 8
 			new.actType = 'ccaEnd'
@@ -167,7 +177,7 @@ def action(curEvent,nodes,mode,numOfChannel):
 				temp = nodes[i].getPacInterval()
 				nodes[i].insertPastInterval(temp)
 
-				nextPacket(mode, nodes, newList, i, t, temp)
+				nextPacket(mode, nodes, newList, i, t, temp, curEvent.createTime) # debug
 
 
 				nodes[i].updateDelayStat()
@@ -192,27 +202,26 @@ def action(curEvent,nodes,mode,numOfChannel):
 					print 'node:', t, nodes[i].ID, 'channel busy, performs backoff.'
 
 	elif arg == 'sendPhy':
-		channel = channels
 		nodes[i].setPower('tx')
 		if curEvent.pacType == 'data':
       		#update the power, add channel param
-   			nodes[i].setTXPower(5, channel[0])
+			for channel in channels:
+				nodes[i].setTXPower(5, channel)
 
 			print 'after setTXPower'
-			print nodes[i].getTXPower(channel[0])
+			print nodes[i].getTXPower(channels[0])
    			# tx_time = TX_TIME_DATA
 			if t < fromSecondToSlot(100):
-				tx_time = nodes[i].getTxTime(channel[0])
+				tx_time = nodes[i].getTxTime(channels[0])
 			elif t< fromSecondToSlot(300):
-				tx_time = nodes[i].getTxTime(channel[0]) + 20
+				tx_time = nodes[i].getTxTime(channels[0]) + 20
 			elif t< fromSecondToSlot(400):
-				tx_time = nodes[i].getTxTime(channel[0]) + 40
+				tx_time = nodes[i].getTxTime(channels[0]) + 40
 			else:
-				tx_time = nodes[i].getTxTime(channel[0])
-
+				tx_time = nodes[i].getTxTime(channels[0])
+			tx_time = tx_time * len(channels)
 		elif curEvent.pacType == 'ack':
 			print 'in ack, none setTXPower'
-			print 'TXPower:', nodes[i].getTXPower(channel[0])
 			tx_time = TX_TIME_ACK
 		else:
 			print 'no such tx time....'
@@ -236,11 +245,12 @@ def action(curEvent,nodes,mode,numOfChannel):
 
 	elif arg == 'sendPhyFinish':
 	# set up the transmitter.
-		channel = channels
+		# channel = channels
 		nodes[i].setPower('sleep')
-		nodes[i].setTXPower(0, channel[0])
+		for channel in channels:
+			nodes[i].setTXPower(0, channel)
 		nodes[i].setPower('rx')
-  
+		
 		if DEBUG:
 			print 'node:', t, nodes[i].ID, 'send phy finished.'
 
@@ -257,7 +267,7 @@ def action(curEvent,nodes,mode,numOfChannel):
 			# schedule new packet transmission
 			temp = nodes[i].getPacInterval()
 			nodes[i].insertPastInterval(temp)
-			nextPacket(mode, nodes, newList, i, t, temp)
+			nextPacket(mode, nodes, newList, i, t, temp, curEvent.createTime) # debug
 
 			'''
 			if mode == 'node increase':
@@ -292,15 +302,17 @@ def action(curEvent,nodes,mode,numOfChannel):
 
 
 	elif arg == 'recvPhy':
-		channel = channels
+		# channel = channels
 		nodes[i].setPower('rx')
 		model = 'ch_model'
-		probRecv = recvPhy(i, nodes, model, channel[0])
+		probRecv = True
+		for channel in channels:
+			recvPhy(i, nodes, model, channel) # determine if all packets have arrived 
 		#print probRecv, curEvent.pacType,nodes[i].BOCount,i
 		if probRecv:
 			if curEvent.pacType == 'ack':
 				new = copy.copy(curEvent)
-				new.time = t
+				new.time = t + phy_time / len(channels)
 				new.actType = 'recvMac'
 				newList.append(new)
 
@@ -308,9 +320,9 @@ def action(curEvent,nodes,mode,numOfChannel):
 					print 'node:',t, nodes[i].ID, 'received ACK at PHY.'
 
 			else:
-				nodes[i].setTXPower(5, channel[0]) # the same channel as sender
+				nodes[i].setTXPower(5, channels[0]) # one channel back
 				new = copy.copy(curEvent)
-				new.time = t
+				new.time = t + phy_time / len(channels)
 				new.actType = 'recvMac'
 				newList.append(new)
 
@@ -345,6 +357,8 @@ def action(curEvent,nodes,mode,numOfChannel):
 				new = copy.copy(curEvent)
 				new.time = t + ACK_TIME  # t_ack
 				new.arriveTime = t # package arrive time
+				if new.des == 0:
+					print new.arriveTime
 				new.actType = 'sendPhy'
 				new.pacType = 'ack'
 				new.pacAckReq = False
@@ -366,7 +380,13 @@ def action(curEvent,nodes,mode,numOfChannel):
 
 			temp = nodes[i].getPacInterval()
 			nodes[i].insertPastInterval(temp)
-			nextPacket(mode, nodes, newList, i, t, temp)
+			# nextPacket(mode, nodes, newList, i, t, temp) # init packet in run.py in 2022/4/10
+			global allEventMap
+			if len(allEventMap[i]) > 0:
+				event = allEventMap[i].pop(0)
+				if event.createTime < t: 
+					event.time = t	# next packet start
+				newList.append(event)
 
 			nodes[i].updateDelayStat()
 			nodes[i].updatePacStat(1)
@@ -375,12 +395,18 @@ def action(curEvent,nodes,mode,numOfChannel):
 			
 			# curEvent.arriveTime = t
 			print('successful event: ', curEvent.__dict__)
-			event_aoi = curEvent.arriveTime - curEvent.createTime
+			# event_aoi = curEvent.arriveTime - curEvent.createTime
+			event_aoi = {
+				'create': curEvent.createTime,
+       			'arrive': curEvent.arriveTime,
+            }
+			if curEvent.arriveTime < curEvent.createTime:
+				print curEvent.__dict__
 			global AOI
 			AOI[i].append(event_aoi)
 			global Freshness
-			pack_freshness = '%.2f'%((T-event_aoi) * 1.0 / T)
-			Freshness[i].append(pack_freshness)
+			# pack_freshness = '%.2f'%((T-event_aoi['create']) * 1.0 / T)
+			# Freshness[i].append(pack_freshness)
 			if DEBUG:
 					print 'node:', t, nodes[i].ID, 'received data at MAC. Packet Succeed.'
 
@@ -388,7 +414,7 @@ def action(curEvent,nodes,mode,numOfChannel):
 	return newList
 
 
-def nextPacket(mode, nodes, newList, i, t, temp):
+def nextPacket(mode, nodes, newList, i, t, temp, createTime):
 	if not TRAFFIC_SATURATED:
 		if mode == 'node increase' or mode == 'normal':
 			if t < fromSecondToSlot(200) or t > fromSecondToSlot(400):
@@ -396,16 +422,16 @@ def nextPacket(mode, nodes, newList, i, t, temp):
 			else:
 				temp = random.randint(math.floor(temp*0.9*0.5), math.floor(temp*1.1*0.5))*20
 
-			new = initialization(nodes[i].getPacStart()+temp, i, len(nodes))
+			new = initialization(nodes[i].getPacStart()+temp, i, len(nodes), createTime)
 			newList.append(new)
 		elif mode == 'node decrease':
 			if i < 30 or t <= fromSecondToSlot(50):
-				new = initialization(nodes[i].getPacStart()+random.randint(temp-1, temp+1), i, len(nodes))
+				new = initialization(nodes[i].getPacStart()+random.randint(temp-1, temp+1), i, len(nodes), createTime)
 				newList.append(new)
 			else:
 				nodes[i].setPacInterval(fromSecondToSlot(50))
 	else:
-		new = initialization(t+(20-t%20), i, len(nodes))
+		new = initialization(t+(20-t%20), i, len(nodes), createTime)
 		newList.append(new)
 
 def fromSecondToSlot(second):

@@ -11,4 +11,6 @@ class event(object):
 		self.pacType = argv['pacType']
 		self.pacAckReq = argv['pacAckReq']
 		self.channel = argv['channel']
-
+		self.createTime = argv['createTime']
+		self.arriveTime = argv['arriveTime']
+	

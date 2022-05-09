@@ -2,7 +2,7 @@ from Source import Source
 from event import event
 
 
-def initialization(t,src,n):
+def initialization(t,src,n,createTime):
 	argv = {}
 	argv['time'] = t
 	argv['actType'] = 'sendMac'
@@ -13,6 +13,8 @@ def initialization(t,src,n):
 	argv['pacType'] = 'data'
 	argv['pacAckReq'] = True
 	argv['channel'] = []
+	argv['createTime'] = createTime
+	argv['arriveTime'] = -1
 	e = event(argv)
 	return e
 

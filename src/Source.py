@@ -12,7 +12,7 @@ class Source(object):
 		self.BOCount = 0
 		self.RTCount = 0
 		self.BOExponent = 0
-		self.CW = 2   # contention window
+		self.CW = 15   # contention window
 		self.CCA = []
 		self.CCAResult = {}
 		self.ID = argv['ID']
@@ -28,7 +28,7 @@ class Source(object):
 # the following set of para are power para
 		self.powLevel = 0  # current power setting
 		# self.powTX = 0     # the TX power, RF power.
-		self.powTX = [0, 0]  # the TX power array, RF power.
+		self.powTX = [0, 0, 0, 0]  # the TX power array, RF power.
 		self.lastPowChange = 0  # time information. record the last time that power level has been changed.
 #<<<<<<< HEAD
 		self.energy = 0 # J
@@ -43,7 +43,7 @@ class Source(object):
 		self.pacSize = 3    # in terms of slots
 
 		# self.TxTime = 80
-		self.TxTime = [80, 80]
+		self.TxTime = [80, 80, 80, 80]
 
 		self.pacData = argv['src']    # use node ID as the data
 # the following are the node ID, destination
